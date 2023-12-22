@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Security.Cryptography;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 using UnityEngine.UIElements;
@@ -14,7 +15,6 @@ public class GridController : MonoBehaviour
     public Material inactiveMaterial;
     public Material gridMaterial;
     private List<Vector3> activeTiles = new List<Vector3>();
-    private List<Vector3> inactiveTiles = new List<Vector3>();
     private List<Vector3> mouseSelects = new List<Vector3>();
     private bool spaceBar = false;
     private float timer = 0.0f;
@@ -65,23 +65,22 @@ public class GridController : MonoBehaviour
             NextGen();
         }
 
-         //if (Input.GetKeyDown("o"))
-        // {
-            //var tiles = GetPositions();
-            //cam.transform.position = new Vector3(tiles[0].x, tiles[0].y, -10);
-            //activeTiles = tiles;
-        //}
+        if (Input.GetKeyDown("o"))
+        {
+            var tiles = GetPositions();
+            cam.transform.position = new Vector3(tiles[0].x, tiles[0].y, -10);
+            activeTiles = tiles;
+        }
     }
 
     void NextGen()
     {
-        print("running");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         List<Vector3> saveActives = new List<Vector3>(activeTiles);
-        List<Vector3> saveInActives = new List<Vector3>(inactiveTiles);
 
         // For Tiles Off Screen;
-        List<Vector3> allInactive = new List<Vector3>(saveInActives);
+        List<Vector3> allInactive = new List<Vector3>();
 
         for (int i = 0; i < saveActives.Count; i++)
         {
@@ -97,17 +96,40 @@ public class GridController : MonoBehaviour
             }
         }
 
+
+
+
         // Rule 1: Any live cell with fewer than two live neighbours dies, as if by underpopulation.
         // Rule 2: Any live cell with two or three live neighbours lives on to the next generation.
         // Rule 3: Any live cell with more than three live neighbours dies, as if by overpopulation.
 
         activeTiles.RemoveAll(tile => UnderOrOverPopulated(tile));
 
+
         // Rule 4: Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 
-        var newActives = allInactive.Where(tile => saveActives.FindAll(t => IsNeighbour(tile, t)).Count == 3).ToList();
+        var newActives = allInactive.Where(tile => ActiveNeighbours(tile) == 3).ToList();
         activeTiles.AddRange(newActives);
 
+
+
+        int ActiveNeighbours(Vector3 tile)
+        {
+            List<Vector3> activeNeighbours = new List<Vector3>();
+            for (int j = -1; j <= 1; j++)
+            {
+                for (int k = -1; k <= 1; k++)
+                {
+                    var pos = new Vector3(tile.x + j, tile.y + k, tile.z);
+                    if (saveActives.Contains(pos) && pos != tile) activeNeighbours.Add(pos);
+                }
+            }
+            return activeNeighbours.Count();
+        }
+
+        watch.Stop();
+        var elapsedMs = watch.ElapsedMilliseconds;
+        print(elapsedMs);
 
         bool IsNeighbour(Vector3 house1, Vector3 house2)
         {
@@ -120,12 +142,12 @@ public class GridController : MonoBehaviour
 
         bool UnderOrOverPopulated(Vector3 tile)
         {
-            List<Vector3> neighbourhood = saveActives.FindAll(t => IsNeighbour(tile, t));
-            if (neighbourhood.Count - 1 < 2) return true;
-            if (neighbourhood.Count - 1 > 3) return true;
+            var activeNeighbours = ActiveNeighbours(tile);
+            if (activeNeighbours < 2 || activeNeighbours > 3) return true;
             return false;
         }
 
+        
        
     }
 
@@ -163,8 +185,6 @@ public class GridController : MonoBehaviour
 
         position = Matrix4x4.Translate(pos);
         activeTiles.Add(pos);
-        inactiveTiles.RemoveAll(tile => tile == pos);
-
     }
 
 
@@ -198,7 +218,6 @@ public class GridController : MonoBehaviour
 
     void Tile()
     {
-        inactiveTiles = new List<Vector3>();
         RenderParams activeRP = new RenderParams(activeMaterial);
 
 
@@ -208,21 +227,10 @@ public class GridController : MonoBehaviour
         Vector3 screenTR = cam.ScreenToWorldPoint(new Vector3(Screen.width, Screen.height, 0));
         Vector3 screenBL = cam.ScreenToWorldPoint(new Vector3(0, 0, 0));
 
-
-        for (int i = 0; i <= Mathf.Ceil(screenTR.x - screenBL.x); i++)
+        foreach (Vector3 tile in activeTiles)
         {
-            for (int j = 0; j <= Mathf.Ceil(screenTR.y - screenBL.y); j++)
-            {
-                Vector3 pos = new Vector3(Mathf.Floor(screenBL.x) + i + 0.5f, Mathf.Floor(screenBL.y) + j + 0.5f, 0);
-                if (activeTiles.Contains(pos))
-                {
-                    activePositions.Add(Matrix4x4.Translate(pos));
-                    continue;
-                }
-                inactiveTiles.Add(pos);
-            }
+            activePositions.Add(Matrix4x4.Translate(tile));
         }
-
 
         if (activePositions.Count > 0)
         {
